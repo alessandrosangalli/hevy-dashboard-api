@@ -29,6 +29,8 @@ dependencies:
 - bytestring
 - wai-extra
 - async
+- text
+- time
 
 ghc-options:
 - -Wall
