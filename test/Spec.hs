@@ -3,22 +3,25 @@
 module Main (main) where
 
 import Test.Hspec
-import Lib (fetchAllWorkoutsWithConfigAndLog, defaultConfig, HttpRequest)
-import Data.Either (isRight, isLeft)
-import System.Environment (setEnv)
-import Network.HTTP.Client (Request, Manager, Response)
-import Network.HTTP.Types (Status, status200, ResponseHeaders, http11)
+import Lib.API (fetchAllWorkoutsWithConfigAndLog)
+import Lib.Types (defaultConfig, HttpRequest)
+import Data.Either (isRight)
+import System.Environment (setEnv, unsetEnv)
+import Network.HTTP.Client (Request, Manager, Response, queryString)
 import Network.HTTP.Client.Internal (Response(..), CookieJar(CJ))
+import Network.HTTP.Types (Status, status200, ResponseHeaders, http11, parseQuery)
 import Data.ByteString.Lazy (ByteString)
 import Hevy (WorkoutsResponse(..), Workout(..))
-import Data.Aeson (encode, object, (.=), Object)
+import Data.Aeson (encode, object, (.=))
+import qualified Data.ByteString.Char8 as BS
+import Data.Text (pack)
 
 main :: IO ()
 main = do
   setEnv "HEVY_API_KEY" "test-api-key"
   hspec $ do
-    describe "Lib" $ do
-      it "fetchAllWorkouts should return a Right value with mocked results" $ do
+    describe "Lib.API" $ do
+      it "fetchAllWorkoutsWithConfigAndLog returns a Right value with mocked results (single page)" $ do
         let mockHttpRequest :: HttpRequest
             mockHttpRequest _ _ _ = do
               let mockBody = encode $ object
@@ -31,26 +34,35 @@ main = do
                     ]
               pure $ Right $ makeResponse mockBody
         result <- fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing (const $ pure ()) mockHttpRequest
-        result `shouldBe` Right [Workout "1" "Run" "2023-01-01T00:00:00Z"]
+        result `shouldBe` Right [Workout (pack "1") (pack "Run") (pack "2023-01-01T00:00:00Z")]
 
-      it "fetchAllWorkouts should handle an empty workouts list" $ do
+      it "fetchAllWorkoutsWithConfigAndLog handles multiple pages" $ do
+        let pageCount = 2 :: Int
         let mockHttpRequest :: HttpRequest
-            mockHttpRequest _ _ _ = do
+            mockHttpRequest req _ _ = do
+              let qs = parseQuery (queryString req)
+              let page = case filter (\(k, _) -> k == "page") qs of
+                           [(_, Just v)] -> read (BS.unpack v) :: Int
+                           _ -> 1  -- Valor padrão se "page" não for encontrado ou for inválido
               let mockBody = encode $ object
-                    [ "workouts" .= ([] :: [Object])
-                    , "page_count" .= (1 :: Int)
+                    [ "workouts" .= [object
+                        [ "id" .= (show page :: String)
+                        , "title" .= ("Run " ++ show page :: String)
+                        , "created_at" .= ("2023-01-0" ++ show page ++ "T00:00:00Z" :: String)
+                        ]]
+                    , "page_count" .= pageCount
                     ]
               pure $ Right $ makeResponse mockBody
         result <- fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing (const $ pure ()) mockHttpRequest
-        result `shouldBe` Right []
+        result `shouldBe` Right [Workout (pack "1") (pack "Run 1") (pack "2023-01-01T00:00:00Z"), Workout (pack "2") (pack "Run 2") (pack "2023-01-02T00:00:00Z")]
 
-      it "fetchAllWorkouts should handle an error response" $ do
+      it "fetchAllWorkoutsWithConfigAndLog fails without API key" $ do
+        unsetEnv "HEVY_API_KEY"
         let mockHttpRequest :: HttpRequest
-            mockHttpRequest _ _ _ = pure $ Left "Error fetching workouts"
+            mockHttpRequest _ _ _ = error "Should not reach HTTP request without API key"
         result <- fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing (const $ pure ()) mockHttpRequest
-        result `shouldSatisfy` isLeft
+        result `shouldBe` Left "The environment variable HEVY_API_KEY is not defined."
 
--- Função auxiliar para criar uma resposta mockada
 makeResponse :: ByteString -> Response ByteString
 makeResponse body = Response
   { responseStatus = status200

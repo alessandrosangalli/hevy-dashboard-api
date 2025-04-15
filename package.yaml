@@ -68,5 +68,6 @@ tests:
     dependencies:
     - hevy-dashboard-api
     - hspec
+    - QuickCheck
     - http-client
     - http-types

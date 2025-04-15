@@ -27,6 +27,10 @@ library
   exposed-modules:
       Hevy
       Lib
+      Lib.API
+      Lib.Core
+      Lib.HTTP
+      Lib.Types
   other-modules:
       Paths_hevy_dashboard_api
   autogen-modules:
@@ -74,6 +78,8 @@ test-suite hevy-dashboard-api-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      HevySpec
+      LibSpec
       Paths_hevy_dashboard_api
   autogen-modules:
       Paths_hevy_dashboard_api
@@ -81,7 +87,8 @@ test-suite hevy-dashboard-api-test
       test
   ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      aeson
+      QuickCheck
+    , aeson
     , async
     , base >=4.7 && <5
     , bytestring
