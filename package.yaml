@@ -67,3 +67,6 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - hevy-dashboard-api
+    - hspec
+    - http-client
+    - http-types

@@ -11,7 +11,7 @@ data Workout = Workout
   { workoutId :: Text
   , title :: Text
   , createdAt :: Text
-  } deriving (Show, Generic)
+  } deriving (Show, Eq, Generic)  -- Adiciona Eq aqui
 
 instance FromJSON Workout where
   parseJSON = withObject "Workout" $ \v -> Workout
@@ -24,7 +24,7 @@ instance ToJSON Workout
 data WorkoutsResponse = WorkoutsResponse
   { workouts :: [Workout]
   , page_count :: Int 
-  } deriving (Show, Generic)
+  } deriving (Show, Eq, Generic)  -- Adiciona Eq aqui
 
 instance FromJSON WorkoutsResponse where
   parseJSON = withObject "WorkoutsResponse" $ \v -> WorkoutsResponse

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Lib (fetchAllWorkouts, fetchAllWorkoutsWithLog, fetchAllWorkoutsGrouped, fetchAllWorkoutsGroupedWithLog) where
+module Lib (fetchAllWorkouts, fetchAllWorkoutsWithLog, fetchAllWorkoutsGrouped, fetchAllWorkoutsGroupedWithLog, fetchAllWorkoutsWithConfigAndLog, defaultConfig, HttpRequest) where
 
 import Data.Aeson (eitherDecode)
 import Data.ByteString.Lazy (ByteString)
@@ -57,30 +57,38 @@ data FetchConfig = FetchConfig
 defaultConfig :: FetchConfig
 defaultConfig = FetchConfig 10 3 1000000
 
-fetchWorkoutsPage :: Manager -> FetchConfig -> String -> Int -> Maybe UTCTime -> IO (Either String (WorkoutsResponse, [Workout]))
-fetchWorkoutsPage manager config apiKey page maybeStartDate = do
+type HttpRequest = Request -> Manager -> Int -> IO (Either String (Response ByteString))
+
+defaultHttpRequest :: HttpRequest
+defaultHttpRequest req mgr retries = do
+  result <- try $ httpLbs req mgr :: IO (Either SomeException (Response ByteString))
+  case result of
+    Left _ | retries > 0 -> do
+      threadDelay (fcDelay defaultConfig)
+      defaultHttpRequest req mgr (retries - 1)
+    Left e -> pure $ Left $ "Request failed after retries: " ++ show e
+    Right response -> pure $ Right response
+
+fetchWorkoutsPage :: HttpRequest -> Manager -> FetchConfig -> String -> Int -> Maybe UTCTime -> IO (Either String (WorkoutsResponse, [Workout]))
+fetchWorkoutsPage httpRequest manager config apiKey page maybeStartDate = do
   let url = "https://api.hevyapp.com/v1/workouts?page=" ++ show page ++ "&pageSize=" ++ show (fcPageSize config)
   request <- parseRequest url
   let requestWithAuth = request { requestHeaders = [("api-key", BS.pack apiKey)] }
-  result <- attemptRequest requestWithAuth manager (fcRetries config)
+  result <- httpRequest requestWithAuth manager (fcRetries config)
   case result of
     Left err -> pure $ Left err
-    Right (resp, workouts) -> pure $ Right (resp, filterWorkouts workouts)
+    Right response -> do
+      let parsed = parseWorkoutsResponse (responseBody response)
+      case parsed of
+        Left err -> pure $ Left err
+        Right (resp, workouts) -> pure $ Right (resp, filterWorkouts workouts)
   where
-    attemptRequest req mgr retries = do
-      result <- try $ httpLbs req mgr :: IO (Either SomeException (Response ByteString))
-      case result of
-        Left _ | retries > 0 -> do
-          threadDelay (fcDelay config)
-          attemptRequest req mgr (retries - 1)
-        Left e -> pure $ Left $ "Request failed after retries: " ++ show e
-        Right response -> pure $ parseWorkoutsResponse (responseBody response)
     filterWorkouts ws = case maybeStartDate of
       Nothing -> ws
       Just startDate -> filter (\w -> maybe False (>= startDate) (parseDate (Data.Text.unpack (createdAt w)))) ws
 
-fetchAllWorkoutsWithConfigAndLog :: FetchConfig -> Maybe UTCTime -> (String -> IO ()) -> IO (Either String [Workout])
-fetchAllWorkoutsWithConfigAndLog config maybeStartDate logger = do
+fetchAllWorkoutsWithConfigAndLog :: FetchConfig -> Maybe UTCTime -> (String -> IO ()) -> HttpRequest -> IO (Either String [Workout])
+fetchAllWorkoutsWithConfigAndLog config maybeStartDate logger httpRequest = do
   maybeApiKey <- lookupEnv "HEVY_API_KEY"
   case maybeApiKey of
     Nothing -> do
@@ -89,7 +97,7 @@ fetchAllWorkoutsWithConfigAndLog config maybeStartDate logger = do
     Just apiKey -> do
       manager <- newManager tlsManagerSettings
       logger $ "Starting search with pageSize=" ++ show (fcPageSize config)
-      firstPageResult <- fetchWorkoutsPage manager config apiKey 1 maybeStartDate
+      firstPageResult <- fetchWorkoutsPage httpRequest manager config apiKey 1 maybeStartDate
       case firstPageResult of
         Left err -> do
           logger $ "Err in the first page: " ++ err
@@ -108,7 +116,7 @@ fetchAllWorkoutsWithConfigAndLog config maybeStartDate logger = do
   where
     fetchAndLogPage manager apiKey startDate page = do
       logger $ "Searching page " ++ show page
-      res <- fetchWorkoutsPage manager config apiKey page startDate
+      res <- fetchWorkoutsPage httpRequest manager config apiKey page startDate
       case res of
         Left err -> logger $ "Error in page " ++ show page ++ ": " ++ err
         Right (_, ws) -> logger $ "Received " ++ show (length ws) ++ " workouts in page " ++ show page
@@ -117,13 +125,13 @@ fetchAllWorkoutsWithConfigAndLog config maybeStartDate logger = do
 -- ** Public API **
 
 fetchAllWorkouts :: IO (Either String [Workout])
-fetchAllWorkouts = fetchAllWorkoutsWithConfig defaultConfig
+fetchAllWorkouts = fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing (const $ pure ()) defaultHttpRequest
 
 fetchAllWorkoutsWithLog :: (String -> IO ()) -> IO (Either String [Workout])
-fetchAllWorkoutsWithLog logger = fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing logger
+fetchAllWorkoutsWithLog logger = fetchAllWorkoutsWithConfigAndLog defaultConfig Nothing logger defaultHttpRequest
 
 fetchAllWorkoutsWithConfig :: FetchConfig -> IO (Either String [Workout])
-fetchAllWorkoutsWithConfig config = fetchAllWorkoutsWithConfigAndLog config Nothing (const $ pure ())
+fetchAllWorkoutsWithConfig config = fetchAllWorkoutsWithConfigAndLog config Nothing (const $ pure ()) defaultHttpRequest
 
 fetchAllWorkoutsGrouped :: IO (Either String [[Workout]])
 fetchAllWorkoutsGrouped = do
@@ -132,7 +140,7 @@ fetchAllWorkoutsGrouped = do
 
 fetchAllWorkoutsGroupedWithLog :: Maybe UTCTime -> (String -> IO ()) -> IO (Either String [[Workout]])
 fetchAllWorkoutsGroupedWithLog maybeStartDate logger = do
-  result <- fetchAllWorkoutsWithConfigAndLog defaultConfig maybeStartDate logger
+  result <- fetchAllWorkoutsWithConfigAndLog defaultConfig maybeStartDate logger defaultHttpRequest
   pure $ fmap (filterWorkoutsByStartDate maybeStartDate . groupWorkoutsByWeeks) result
 
 filterWorkoutsByStartDate :: Maybe UTCTime -> [[Workout]] -> [[Workout]]

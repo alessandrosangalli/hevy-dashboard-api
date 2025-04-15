@@ -86,8 +86,10 @@ test-suite hevy-dashboard-api-test
     , base >=4.7 && <5
     , bytestring
     , hevy-dashboard-api
+    , hspec
     , http-client
     , http-client-tls
+    , http-types
     , scotty
     , text
     , time
