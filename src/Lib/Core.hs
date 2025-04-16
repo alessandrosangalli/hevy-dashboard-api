@@ -7,15 +7,18 @@ module Lib.Core
   , combineAllPages
   , parseDate
   , groupWorkoutsByWeeks
-  , filterWorkoutsByStartDate
+  , formatWorkoutsOutput
   ) where
 
-import Data.Aeson (eitherDecode)
+import Data.Aeson (eitherDecode, encode, object, (.=), ToJSON(..))
 import Data.ByteString.Lazy (ByteString)
-import Hevy (Workout, WorkoutsResponse(..), createdAt)
+import Hevy (Workout, WorkoutsResponse(..), createdAt, title, exercises, startTime)
 import Data.List (foldl', groupBy, sortOn)
-import Data.Time (UTCTime, utctDay, parseTimeM, defaultTimeLocale, diffDays)
+import Data.Maybe (fromMaybe)
+import Data.Time (UTCTime, utctDay, parseTimeM, defaultTimeLocale, diffDays, addDays)
 import Data.Text (unpack)
+import Control.Applicative ((<|>))
+import Control.Monad ((>=>))
 
 parseWorkoutsResponse :: ByteString -> Either String (WorkoutsResponse, [Workout])
 parseWorkoutsResponse body = case eitherDecode body of
@@ -34,17 +37,30 @@ combineAllPages :: [Workout] -> [Either String [Workout]] -> Either String [Work
 combineAllPages initial others = foldl' combinePageResults (Right initial) others
 
 parseDate :: String -> Maybe UTCTime
-parseDate = parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%QZ"
+parseDate s = parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%Z" s
+  <|> parseTimeM True defaultTimeLocale "%Y-%m-%dT%H:%M:%S%z" s
+  <|> parseTimeM True defaultTimeLocale "%Y-%m-%d" s
 
-groupWorkoutsByWeeks :: [Workout] -> [[Workout]]
-groupWorkoutsByWeeks ws =
-  let sortedWorkouts = sortOn (parseDate . unpack . createdAt) ws
-      groupByInterval w1 w2 = case (parseDate (unpack $ createdAt w1), parseDate (unpack $ createdAt w2)) of
-        (Just date1, Just date2) -> diffDays (utctDay date2) (utctDay date1) < 28
+groupWorkoutsByWeeks :: Maybe UTCTime -> [Workout] -> [[Workout]]
+groupWorkoutsByWeeks _ ws = take 4 $ groupByWeeks ws ++ repeat []
+
+groupByWeeks :: [Workout] -> [[Workout]]
+groupByWeeks ws =
+  let sortedWorkouts = sortOn (startTime >=> parseDate . unpack) ws
+      groupByWeek w1 w2 = case (startTime w1 >>= parseDate . unpack, startTime w2 >>= parseDate . unpack) of
+        (Just date1, Just date2) -> let weekDiff = diffDays (utctDay date2) (utctDay date1) `div` 7 in weekDiff == 0
         _ -> False
-  in groupBy groupByInterval sortedWorkouts
+  in groupBy groupByWeek sortedWorkouts
 
-filterWorkoutsByStartDate :: Maybe UTCTime -> [[Workout]] -> [[Workout]]
-filterWorkoutsByStartDate Nothing groups = groups
-filterWorkoutsByStartDate (Just startDate) groups =
-  filter (not . null) $ map (filter (\w -> maybe False (>= startDate) (parseDate (unpack (createdAt w))))) groups
+formatWorkoutsOutput :: Maybe UTCTime -> [[Workout]] -> ByteString
+formatWorkoutsOutput maybeStartDate groups =
+  let weekGroups = take 4 $ zip [1..] groups ++ [(i, []) | i <- [length groups + 1 .. 4]]
+      toWeekObject (weekNum, ws) = object
+        [ "week" .= weekNum
+        , "workouts" .= map (\w -> [object
+            [ "name" .= title w
+            , "start_time" .= fromMaybe "" (startTime w)
+            , "exercises" .= exercises w
+            ]]) ws
+        ]
+  in encode $ map toWeekObject weekGroups

@@ -1,23 +1,25 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
+
+module Main where
 
 import Web.Scotty
-import Network.Wai.Middleware.RequestLogger (logStdoutDev)
-import Lib (fetchAllWorkoutsGroupedWithLog)
 import Data.Aeson (object, (.=))
-import Control.Monad.IO.Class (liftIO)
-import Data.Time (UTCTime, parseTimeM, defaultTimeLocale)
+import Lib (fetchAllWorkoutsGroupedWithLog)
+import Data.ByteString.Lazy (ByteString)
 import Web.Scotty.Internal.Types (ScottyException)
+import Network.Wai.Middleware.Cors (cors, simpleCors)
 
 main :: IO ()
 main = scotty 3000 $ do
-  middleware logStdoutDev
+  -- Add CORS middleware to allow all origins
+  middleware simpleCors
+
   get "/workouts" $ do
-    startDateParam <- param "startDate" `rescue` (\(_ :: ScottyException) -> pure "")
-    let maybeStartDate = if startDateParam == ""
-                         then Nothing
-                         else parseTimeM True defaultTimeLocale "%Y-%m-%d" startDateParam :: Maybe UTCTime
-    result <- liftIO $ fetchAllWorkoutsGroupedWithLog maybeStartDate putStrLn
+    startDateStr <- param "startDate" `rescue` (\(_ :: ScottyException) -> pure "")
+    let logger = putStrLn
+    result <- liftIO $ fetchAllWorkoutsGroupedWithLog startDateStr logger
     case result of
       Left err -> json $ object ["error" .= err]
-      Right groupedWorkouts -> json groupedWorkouts
+      Right groupedWorkouts -> do
+        setHeader "Content-Type" "application/json"
+        raw groupedWorkouts

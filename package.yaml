@@ -31,6 +31,8 @@ dependencies:
 - async
 - text
 - time
+- wai-cors
+- http-types
 
 ghc-options:
 - -Wall

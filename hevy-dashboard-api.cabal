@@ -45,9 +45,11 @@ library
     , bytestring
     , http-client
     , http-client-tls
+    , http-types
     , scotty
     , text
     , time
+    , wai-cors
     , wai-extra
   default-language: Haskell2010
 
@@ -68,9 +70,11 @@ executable hevy-dashboard-api-exe
     , hevy-dashboard-api
     , http-client
     , http-client-tls
+    , http-types
     , scotty
     , text
     , time
+    , wai-cors
     , wai-extra
   default-language: Haskell2010
 
@@ -100,5 +104,6 @@ test-suite hevy-dashboard-api-test
     , scotty
     , text
     , time
+    , wai-cors
     , wai-extra
   default-language: Haskell2010

@@ -7,12 +7,12 @@ module Lib.HTTP
 
 import Network.HTTP.Client
 import Network.HTTP.Client.TLS (tlsManagerSettings)
-import Hevy (Workout, WorkoutsResponse, createdAt)  -- Adiciona createdAt aqui
+import Hevy (Workout, WorkoutsResponse, createdAt, title, startTime)
 import qualified Data.ByteString.Char8 as BS
 import Control.Exception (try, SomeException)
 import Control.Concurrent (threadDelay)
 import Data.Time (UTCTime)
-import Data.Text (unpack)
+import Data.Text (Text, unpack)
 import Data.ByteString.Lazy (ByteString)
 import Lib.Core (parseWorkoutsResponse, parseDate)
 import Lib.Types (FetchConfig(..), HttpRequest, defaultConfig)
@@ -39,8 +39,6 @@ fetchWorkoutsPage httpRequest manager config apiKey page maybeStartDate = do
       let parsed = parseWorkoutsResponse (responseBody response)
       case parsed of
         Left err -> pure $ Left err
-        Right (resp, workouts) -> pure $ Right (resp, filterWorkouts workouts)
-  where
-    filterWorkouts ws = case maybeStartDate of
-      Nothing -> ws
-      Just startDate -> filter (\w -> maybe False (>= startDate) (parseDate (unpack (createdAt w)))) ws
+        Right (resp, workouts) -> do
+          mapM_ (\w -> putStrLn $ "Workout: title=" ++ unpack (title w) ++ ", start_time=" ++ show (startTime w)) workouts
+          pure $ Right (resp, workouts)
