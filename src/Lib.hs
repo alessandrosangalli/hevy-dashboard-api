@@ -7,7 +7,7 @@ module Lib
   , fetchAllWorkoutsGrouped
   , fetchAllWorkoutsGroupedWithLog
   , fetchAllWorkoutsWithConfig
-  , fetchAllWorkoutsWithConfigAndLog  -- Exportado para testes
+  , fetchAllWorkoutsWithConfigAndLog
     -- * Configuration
   , FetchConfig(..)
   , defaultConfig

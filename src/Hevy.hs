@@ -4,16 +4,16 @@
 module Hevy (Workout(..), WorkoutsResponse(..), Exercise(..), Set(..)) where
 
 import Data.Aeson (FromJSON, ToJSON(toJSON), parseJSON, withObject, (.:), (.:?), object, (.=))
-import Data.Aeson.Types (Parser)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe) -- Adicionado
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
+-- | A single set in an exercise, including repetitions, weight, type, and RPE.
 data Set = Set
   { setReps :: Maybe Int
   , setWeightKg :: Maybe Double
   , setType :: Text
-  , setRpe :: Maybe Double  -- Added rpe
+  , setRpe :: Maybe Double
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Set where
@@ -25,40 +25,24 @@ instance FromJSON Set where
 
 instance ToJSON Set
 
+-- | An exercise within a workout, containing a name and a list of sets.
 data Exercise = Exercise
   { exerciseName :: Text
-  , sets :: Int
-  , reps :: Int
-  , weightKg :: Maybe Double  -- Added weight_kg
-  , rpe :: Maybe Double       -- Added rpe
+  , exerciseSets :: [Set]
   } deriving (Show, Eq, Generic)
 
 instance FromJSON Exercise where
   parseJSON = withObject "Exercise" $ \v -> Exercise
     <$> v .: "title"
-    <*> (maybe 0 length <$> (v .:? "sets" :: Parser (Maybe [Set])))
-    <*> (v .:? "sets" >>= \mSets -> case mSets of
-          Nothing -> pure 0
-          Just [] -> pure 0
-          Just (s:_) -> pure (fromMaybe 0 (setReps s)))
-    <*> (v .:? "sets" >>= \mSets -> case mSets of
-          Nothing -> pure Nothing
-          Just [] -> pure Nothing
-          Just (s:_) -> pure (setWeightKg s))
-    <*> (v .:? "sets" >>= \mSets -> case mSets of
-          Nothing -> pure Nothing
-          Just [] -> pure Nothing
-          Just (s:_) -> pure (setRpe s))
+    <*> (fromMaybe [] <$> v .:? "sets")
 
 instance ToJSON Exercise where
-  toJSON (Exercise name sets reps weightKg rpe) = object
+  toJSON (Exercise name sets) = object
     [ "name" .= name
     , "sets" .= sets
-    , "reps" .= reps
-    , "weight_kg" .= weightKg
-    , "rpe" .= rpe
     ]
 
+-- | A workout, including its ID, title, creation time, start time, and exercises.
 data Workout = Workout
   { workoutId :: Text
   , title :: Text
@@ -84,9 +68,10 @@ instance ToJSON Workout where
     , "exercises" .= exercises
     ]
 
+-- | Response from the workouts API, containing a list of workouts and page count.
 data WorkoutsResponse = WorkoutsResponse
   { workouts :: [Workout]
-  , page_count :: Int 
+  , page_count :: Int
   } deriving (Show, Eq, Generic)
 
 instance FromJSON WorkoutsResponse where

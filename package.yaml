@@ -33,6 +33,8 @@ dependencies:
 - time
 - wai-cors
 - http-types
+- vector
+- vector-algorithms
 
 ghc-options:
 - -Wall
@@ -61,7 +63,7 @@ executables:
 
 tests:
   hevy-dashboard-api-test:
-    main:                Spec.hs
+    main:                MainSpec.hs
     source-dirs:         test
     ghc-options:
     - -threaded
