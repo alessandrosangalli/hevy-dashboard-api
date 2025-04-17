@@ -1,10 +1,17 @@
+const http = require("http");
 const { exec } = require("child_process");
-module.exports = (req, res) => {
+
+const handler = (req, res) => {
   exec("./hevy-dashboard-api-exe", (error, stdout) => {
     if (error) {
-      res.status(500).send("Erro ao rodar API");
+      res.writeHead(500);
+      res.end("Erro ao rodar API");
       return;
     }
-    res.status(200).send(stdout);
+    res.writeHead(200);
+    res.end(stdout);
   });
 };
+
+const server = http.createServer(handler);
+server.listen(3000, () => console.log("Rodando na porta 3000"));
