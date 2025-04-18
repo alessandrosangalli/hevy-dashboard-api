@@ -10,19 +10,25 @@ import Web.Scotty.Internal.Types (ScottyException)
 import Network.Wai.Middleware.Cors (cors, simpleCors)
 import Data.Text (Text)
 import qualified Data.Text.IO as TextIO
+import System.Environment (lookupEnv) -- Novo import
+import Data.Maybe (fromMaybe) -- Novo import
 
 main :: IO ()
-main = scotty 3000 $ do
-  -- Add CORS middleware to allow all origins
-  middleware simpleCors
+main = do
+  -- Lê a variável PORT, usa 3000 como fallback
+  portStr <- fromMaybe "3000" <$> lookupEnv "PORT"
+  let port = read portStr :: Int -- Converte para Int
+  scotty port $ do
+    -- Add CORS middleware
+    middleware simpleCors
 
-  get "/workouts" $ do
-    startDateStr <- param "startDate" `rescue` (\(_ :: ScottyException) -> pure "")
-    let logger :: Text -> IO ()
-        logger = TextIO.putStrLn
-    result <- liftIO $ fetchAllWorkoutsGroupedWithLog startDateStr logger
-    case result of
-      Left err -> json $ object ["error" .= err]
-      Right groupedWorkouts -> do
-        setHeader "Content-Type" "application/json"
-        raw groupedWorkouts
+    get "/workouts" $ do
+      startDateStr <- param "startDate" `rescue` (\(_ :: ScottyException) -> pure "")
+      let logger :: Text -> IO ()
+          logger = TextIO.putStrLn
+      result <- liftIO $ fetchAllWorkoutsGroupedWithLog startDateStr logger
+      case result of
+        Left err -> json $ object ["error" .= err]
+        Right groupedWorkouts -> do
+          setHeader "Content-Type" "application/json"
+          raw groupedWorkouts
